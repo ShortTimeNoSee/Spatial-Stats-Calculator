@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spatial Stats & Heatmap Calculator</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
+    <style>
+        :root {
+            --primary-color: #2e7d32;
+            --primary-color-dark: #1b5e20;
+            --primary-color-light: #e8f5e9;
+            --secondary-color: #4caf50;
+            --error-color: #d32f2f;
+            --text-color: #212121;
+            --text-color-light: #5f5f5f;
+            --background-color: #ffffff;
+            --card-bg: #ffffff;
+            --border-color: #e0e0e0;
+            --border-radius: 8px;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* dark mode */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --primary-color: #66bb6a;
+                --primary-color-dark: #388e3c;
+                --primary-color-light: #2e2e2e;
+                --secondary-color: #81c784;
+                --error-color: #ef5350;
+                --text-color: #e0e0e0;
+                --text-color-light: #bdbdbd;
+                --background-color: #121212;
+                --card-bg: #1e1e1e;
+                --border-color: #333333;
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-family);
+            line-height: 1.6;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            font-size: 16px;
+            padding-bottom: 4rem;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        header {
+            background-color: var(--card-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 2rem 1rem;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        header h1 {
+            color: var(--primary-color);
+            font-size: 1.75rem;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+
+        header p {
+            color: var(--text-color-light);
+            font-size: 0.95rem;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            display: grid;
+            gap: 2rem;
+        }
+
+        section {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            padding: 1.5rem;
+            transition: transform 0.2s ease;
+        }
+
+        section h2 {
+            font-size: 1.25rem;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 0.5rem;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .badge {
+            background-color: var(--primary-color-light);
+            color: var(--primary-color-dark);
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-weight: 700;
+        }
+
+        .results-section {
+            border-top: 4px solid var(--primary-color);
+        }
+
+        .results-primary {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 2rem;
+            margin: 1.5rem 0;
+            flex-wrap: wrap;
+            text-align: center;
+        }
+
+        .result-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .result-value {
+            font-size: 3.5rem;
+            font-weight: 800;
+            line-height: 1;
+            color: var(--primary-color);
+        }
+        
+        .result-label {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-color-light);
+            margin-top: 0.5rem;
+            font-weight: 600;
+        }
+
+        .pattern-badge {
+            font-size: 1.5rem;
+            padding: 0.5rem 1.5rem;
+            background-color: var(--border-color);
+            color: var(--text-color);
+            border-radius: 50px;
+            font-weight: 600;
+            margin-top: 0.5rem;
+        }
+
+        .pattern-clustered { background-color: #ffebee; color: #c62828; }
+        .pattern-random { background-color: #e8f5e9; color: #2e7d32; }
+        .pattern-dispersed { background-color: #e3f2fd; color: #1565c0; }
+
+        @media (prefers-color-scheme: dark) {
+            .pattern-clustered { background-color: #5c1b1b; color: #ffcdd2; }
+            .pattern-random { background-color: #1b5e20; color: #c8e6c9; }
+            .pattern-dispersed { background-color: #0d47a1; color: #bbdefb; }
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+        .stat-item strong {
+            display: block;
+            font-size: 1.2rem;
+            color: var(--text-color);
+        }
+        .stat-item span {
+            font-size: 0.8rem;
+            color: var(--text-color-light);
+        }
+
+        #map-container {
+            position: relative;
+        }
+
+        #map {
+            height: 400px;
+            width: 100%;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            z-index: 1;
+        }
+
+        .map-controls {
+            margin-top: 1rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            padding: 1rem;
+            background: var(--primary-color-light);
+            border-radius: var(--border-radius);
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .control-group label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-color);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--primary-color);
+        }
+
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        /* INPUT AREA */
+        .input-wrapper {
+            position: relative;
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 1rem;
+            font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono", "Source Code Pro", monospace;
+            font-size: 0.9rem;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            resize: vertical;
+            white-space: pre;
+            overflow-x: auto;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px var(--primary-color-light);
+        }
+
+        .helper-text {
+            margin-top: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--text-color-light);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .data-toolbar {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.6rem 1.2rem;
+            font-size: 0.95rem;
+            font-weight: 600;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background-color: var(--primary-color);
+            color: white;
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            background-color: var(--primary-color-dark);
+            transform: translateY(-1px);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background-color: transparent;
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+        
+        .btn-secondary:hover {
+            background-color: var(--border-color);
+            color: var(--text-color);
+        }
+
+        .file-upload-label {
+            cursor: pointer;
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-color-light);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border-color);
+            margin-top: 2rem;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: var(--text-color);
+            color: var(--background-color);
+            padding: 0.75rem 1.5rem;
+            border-radius: 50px;
+            font-size: 0.9rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        
+        .toast.show {
+            opacity: 1;
+        }
+
+        .data-status {
+            font-size: 0.85rem;
+            color: var(--text-color-light);
+            margin-top: 0.5rem;
+            font-style: italic;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-4px); }
+            40% { transform: translateX(4px); }
+            60% { transform: translateX(-4px); }
+            80% { transform: translateX(4px); }
+        }
+
+        .lock-warning {
+            color: var(--error-color) !important;
+            animation: shake 0.4s ease-in-out;
+        }
+
+        .lock-warning input[type="checkbox"] {
+            accent-color: var(--error-color);
+        }
+
+        .btn-small {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+        }
+
+        .map-actions {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        :focus-visible {
+            outline: 2px solid var(--primary-color);
+            outline-offset: 2px;
+        }
+
+        button:focus-visible,
+        input:focus-visible,
+        textarea:focus-visible,
+        [tabindex]:focus-visible {
+            outline: 2px solid var(--primary-color);
+            outline-offset: 2px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Spatial Stats & Heatmap</h1>
+        <p>Nearest Neighbor Analysis & Density Visualization</p>
+    </header>
+
+    <main class="container">
+        
+        <section class="results-section" aria-labelledby="results-heading" role="region" aria-live="polite">
+            <h2 id="results-heading">Analysis Results <span id="point-count-badge" class="badge" aria-label="Number of data points">0 Points</span></h2>
+            
+            <div class="results-primary" role="group" aria-label="Primary analysis results">
+                <div class="result-card">
+                    <div id="r-value" class="result-value" aria-label="R-Value">--</div>
+                    <div class="result-label" id="r-value-label">R-Value (Index)</div>
+                </div>
+                
+                <div class="result-card">
+                    <div id="pattern-badge" class="pattern-badge" role="status" aria-label="Spatial pattern classification">--</div>
+                    <div class="result-label">Spatial Pattern</div>
+                </div>
+            </div>
+
+            <div class="stats-grid" role="group" aria-label="Detailed statistics">
+                <div class="stat-item">
+                    <strong id="mnnd-val" aria-describedby="mnnd-label">--</strong>
+                    <span id="mnnd-label">Observed Mean Dist.</span>
+                </div>
+                <div class="stat-item">
+                    <strong id="exp-val" aria-describedby="exp-label">--</strong>
+                    <span id="exp-label">Expected Mean Dist.</span>
+                </div>
+                <div class="stat-item">
+                    <strong id="z-score" aria-describedby="z-label">--</strong>
+                    <span id="z-label">Z-Score (Significance)</span>
+                </div>
+                <div class="stat-item">
+                    <strong id="density-val" aria-describedby="density-label">--</strong>
+                    <span id="density-label">Density (points/m²)</span>
+                </div>
+                <div class="stat-item">
+                    <strong id="se-val" aria-describedby="se-label">--</strong>
+                    <span id="se-label">Standard Error</span>
+                </div>
+            </div>
+            
+            <p id="interpretation" class="data-status" style="text-align: center; margin-top: 1.5rem;" role="status" aria-live="polite">
+                Enter coordinates below to see analysis.
+            </p>
+        </section>
+
+        <section id="map-container" aria-labelledby="map-heading" role="region">
+            <h2 id="map-heading">Spatial Visualization</h2>
+            <div id="map" role="application" aria-label="Interactive heatmap showing coordinate distribution"></div>
+            
+            <div class="map-controls">
+                <div class="control-group">
+                    <label for="heat-radius">Radius <span id="val-radius">25</span></label>
+                    <input type="range" id="heat-radius" min="5" max="100" value="25" aria-describedby="radius-desc">
+                    <span id="radius-desc" class="sr-only">Adjust the radius of each heat point on the map</span>
+                </div>
+                <div class="control-group">
+                    <label for="heat-blur">Blur <span id="val-blur">25</span></label>
+                    <input type="range" id="heat-blur" min="5" max="80" value="25" aria-describedby="blur-desc">
+                    <span id="blur-desc" class="sr-only">Adjust the blur amount of the heatmap visualization</span>
+                </div>
+                <div class="control-group">
+                    <label for="heat-max">Max Intensity <span id="val-max">1.5</span></label>
+                    <input type="range" id="heat-max" min="0.5" max="4.0" step="0.25" value="1.5" aria-describedby="intensity-desc">
+                    <span id="intensity-desc" class="sr-only">Adjust the maximum intensity of the heatmap colors</span>
+                </div>
+                <div class="control-group" style="justify-content: center;">
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" id="toggle-points" checked aria-describedby="toggle-points-desc">
+                        <label for="toggle-points" style="display:inline; margin:0;">Show Points</label>
+                        <span id="toggle-points-desc" class="sr-only">Toggle visibility of individual coordinate markers on the map</span>
+                    </div>
+                    <div class="checkbox-wrapper" id="lock-wrapper">
+                        <input type="checkbox" id="lock-map" aria-describedby="lock-map-desc">
+                        <label for="lock-map" style="display:inline; margin:0;">Lock Map</label>
+                        <span id="lock-map-desc" class="sr-only">Prevent panning and zooming on the map</span>
+                    </div>
+                </div>
+                <div class="control-group" style="justify-content: center; align-items: center;">
+                    <div class="map-actions">
+                        <button type="button" id="center-btn" class="btn btn-secondary btn-small" aria-label="Center map on all coordinates">Center on Points</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section aria-labelledby="input-heading" role="region">
+            <h2 id="input-heading">Data Input</h2>
+            <p id="input-instructions">Paste your coordinates or upload a file. The calculator will automatically detect Latitude/Longitude pairs.</p>
+            
+            <div class="input-wrapper">
+                <label for="coord-input" class="sr-only">Coordinate Input</label>
+                <textarea id="coord-input" aria-describedby="input-instructions parse-status" placeholder="Example:
+39.654, -121.638
+39.655, -121.637
+...
+
+Or paste a CSV with headers."></textarea>
+            </div>
+            
+            <div class="helper-text">
+                <span id="parse-status" role="status" aria-live="polite">Waiting for input...</span>
+                <span>Supports: Lat/Lon, CSV, Tab-Delimited</span>
+            </div>
+
+            <div class="data-toolbar" role="group" aria-label="Data actions">
+                <button type="button" id="calc-btn" class="btn" aria-label="Recalculate analysis with current coordinates">Recalculate</button>
+                <label class="btn btn-secondary file-upload-label" tabindex="0" role="button" aria-label="Import coordinates from a file">
+                    Import File
+                    <input type="file" id="file-input" accept=".csv,.txt,.json" class="sr-only" aria-label="Choose file to import">
+                </label>
+                <button type="button" id="clear-btn" class="btn btn-secondary" style="color: var(--error-color); border-color: var(--error-color);" aria-label="Clear all coordinate data">Clear</button>
+            </div>
+        </section>
+
+        <section aria-labelledby="info-heading" role="region">
+            <h2 id="info-heading">Methodology</h2>
+            <p>
+                <strong>Distance Calculation:</strong> Uses a local "Flat Earth" projection centered on the mean latitude of the dataset to convert decimal degrees to meters. 
+                <br><br>
+                <strong>Area Calculation:</strong> Uses the Convex Hull (Monotone Chain algorithm) of the points to determine the minimum bounding polygon area.
+                <br><br>
+                <strong>Heatmap:</strong> Visualized using Leaflet.heat with dynamic Kernel Density Estimation (KDE) adjustments.
+                <br><br>
+                <strong>Pattern Significance:</strong> Patterns are classified using the Standard Normal Z-Score (|Z| < 1.96 = Random).
+            </p>
+        </section>
+
+    </main>
+
+    <footer>
+        <p>Calculations run locally in your browser.</p>
+    </footer>
+
+    <div id="toast" class="toast" role="alert" aria-live="assertive">Action Completed</div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const inputArea = document.getElementById('coord-input');
+            const fileInput = document.getElementById('file-input');
+            const calcBtn = document.getElementById('calc-btn');
+            const clearBtn = document.getElementById('clear-btn');
+            
+            const ui = {
+                rValue: document.getElementById('r-value'),
+                pattern: document.getElementById('pattern-badge'),
+                mnnd: document.getElementById('mnnd-val'),
+                exp: document.getElementById('exp-val'),
+                zScore: document.getElementById('z-score'),
+                density: document.getElementById('density-val'),
+                se: document.getElementById('se-val'),
+                countBadge: document.getElementById('point-count-badge'),
+                status: document.getElementById('parse-status'),
+                interp: document.getElementById('interpretation')
+            };
+
+            const mapControls = {
+                radius: document.getElementById('heat-radius'),
+                blur: document.getElementById('heat-blur'),
+                max: document.getElementById('heat-max'),
+                togglePoints: document.getElementById('toggle-points'),
+                lockMap: document.getElementById('lock-map'),
+                lockWrapper: document.getElementById('lock-wrapper'),
+                centerBtn: document.getElementById('center-btn'),
+                labelRadius: document.getElementById('val-radius'),
+                labelBlur: document.getElementById('val-blur'),
+                labelMax: document.getElementById('val-max')
+            };
+
+            let map;
+            let heatLayer;
+            let pointLayerGroup;
+            const R_EARTH = 6378137; 
+            let currentPoints = [];
+            let isMapLocked = false;
+
+            const triggerLockWarning = () => {
+                mapControls.lockWrapper.classList.remove('lock-warning');
+                void mapControls.lockWrapper.offsetWidth;
+                mapControls.lockWrapper.classList.add('lock-warning');
+                setTimeout(() => mapControls.lockWrapper.classList.remove('lock-warning'), 400);
+            };
+
+            const setMapInteraction = (enabled) => {
+                if (!map) return;
+                if (enabled) {
+                    map.dragging.enable();
+                    map.touchZoom.enable();
+                    map.doubleClickZoom.enable();
+                    map.scrollWheelZoom.enable();
+                    map.boxZoom.enable();
+                    map.keyboard.enable();
+                } else {
+                    map.dragging.disable();
+                    map.touchZoom.disable();
+                    map.doubleClickZoom.disable();
+                    map.scrollWheelZoom.disable();
+                    map.boxZoom.disable();
+                    map.keyboard.disable();
+                }
+            };
+
+            const centerOnPoints = () => {
+                if (!map || currentPoints.length === 0) return;
+                const bounds = L.latLngBounds(currentPoints.map(p => [p.lat, p.lon]));
+                map.fitBounds(bounds, { padding: [50, 50] });
+            };
+
+            const initMap = () => {
+                map = L.map('map').setView([0, 0], 2);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                    maxZoom: 19
+                }).addTo(map);
+
+                pointLayerGroup = L.layerGroup().addTo(map);
+
+                const mapEl = document.getElementById('map');
+                ['mousedown', 'touchstart', 'wheel'].forEach(evt => {
+                    mapEl.addEventListener(evt, (e) => {
+                        if (isMapLocked) triggerLockWarning();
+                    }, { passive: true });
+                });
+            };
+
+            const updateMap = (pts) => {
+                if (!map) initMap();
+                
+                if (heatLayer) map.removeLayer(heatLayer);
+                pointLayerGroup.clearLayers();
+
+                if (pts.length === 0) return;
+
+                const heatData = pts.map(p => [p.lat, p.lon, 1]); // intensity 1 per point
+
+                heatLayer = L.heatLayer(heatData, {
+                    radius: parseInt(mapControls.radius.value),
+                    blur: parseInt(mapControls.blur.value),
+                    max: parseFloat(mapControls.max.value),
+                    maxZoom: 10
+                }).addTo(map);
+
+                if (mapControls.togglePoints.checked) {
+                    pts.forEach(p => {
+                        L.circleMarker([p.lat, p.lon], {
+                            radius: 3,
+                            fillColor: "var(--primary-color)",
+                            color: "#fff",
+                            weight: 1,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        }).addTo(pointLayerGroup);
+                    });
+                }
+
+                if (!isMapLocked) {
+                    const bounds = L.latLngBounds(pts.map(p => [p.lat, p.lon]));
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                }
+            };
+
+            const refreshHeatmapSettings = () => {
+                if (!heatLayer) return;
+                
+                const r = parseInt(mapControls.radius.value);
+                const b = parseInt(mapControls.blur.value);
+                const m = parseFloat(mapControls.max.value);
+
+                heatLayer.setOptions({
+                    radius: r,
+                    blur: b,
+                    max: m
+                });
+
+                mapControls.labelRadius.textContent = r;
+                mapControls.labelBlur.textContent = b;
+                mapControls.labelMax.textContent = m;
+            };
+
+
+            const parseTextToPoints = (text) => {
+                const lines = text.split(/\r?\n/);
+                const extracted = [];
+                // matches optional minus, digits, dot, digits
+                const numRegex = /-?\d+\.?\d*/g;
+
+                lines.forEach(line => {
+                    if (!line.trim() || line.startsWith('#')) return;
+
+                    const matches = line.match(numRegex);
+                    
+                    if (matches && matches.length >= 2) {
+                        let val1 = parseFloat(matches[0]);
+                        let val2 = parseFloat(matches[1]);
+                        
+                        if (isNaN(val1) || isNaN(val2)) return;
+
+                        // heuristic: us lat is 30-50 (pos), lon is -100ish (neg)
+                        let lat, lon;
+                        
+                        if (Math.abs(val1) <= 90 && Math.abs(val2) > 90) {
+                            lat = val1;
+                            lon = val2;
+                        } else if (Math.abs(val2) <= 90 && Math.abs(val1) > 90) {
+                            lat = val2;
+                            lon = val1;
+                        } else {
+                            lat = val1;
+                            lon = val2;
+                        }
+                        extracted.push({ lat, lon });
+                    }
+                });
+                return extracted;
+            };
+
+            // flat earth math because geodesy is hard
+            const projectPoints = (pts) => {
+                if (pts.length === 0) return [];
+                
+                const meanLat = pts.reduce((acc, p) => acc + p.lat, 0) / pts.length;
+                const meanLon = pts.reduce((acc, p) => acc + p.lon, 0) / pts.length;
+
+                const metersPerDegLat = 111132;
+                const metersPerDegLon = (Math.PI / 180) * R_EARTH * Math.cos(meanLat * Math.PI / 180);
+
+                return pts.map(p => ({
+                    x: (p.lon - meanLon) * metersPerDegLon,
+                    y: (p.lat - meanLat) * metersPerDegLat
+                }));
+            };
+
+            // "shrink wrap" logic stolen from StackExchange
+            const getConvexHullArea = (pts) => {
+                if (pts.length < 3) return 0;
+
+                const sorted = [...pts].sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
+                const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+                const lower = [];
+                for (let p of sorted) {
+                    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+                        lower.pop();
+                    }
+                    lower.push(p);
+                }
+
+                const upper = [];
+                for (let i = sorted.length - 1; i >= 0; i--) {
+                    const p = sorted[i];
+                    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+                        upper.pop();
+                    }
+                    upper.push(p);
+                }
+
+                upper.pop();
+                lower.pop();
+                const hull = lower.concat(upper);
+
+                // "shoelace formula" stolen from StackExchange
+                let area = 0;
+                for (let i = 0; i < hull.length; i++) {
+                    const j = (i + 1) % hull.length;
+                    area += hull[i].x * hull[j].y;
+                    area -= hull[j].x * hull[i].y;
+                }
+                
+                return Math.abs(area / 2);
+            };
+
+            const getNearestDistances = (pts) => {
+                if (pts.length < 2) return [];
+                const distances = [];
+                
+                for (let i = 0; i < pts.length; i++) {
+                    let minDist = Infinity;
+                    for (let j = 0; j < pts.length; j++) {
+                        if (i === j) continue;
+                        const dx = pts[i].x - pts[j].x;
+                        const dy = pts[i].y - pts[j].y;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist < minDist) minDist = dist;
+                    }
+                    distances.push(minDist);
+                }
+                return distances;
+            };
+
+            const calculateStdDev = (arr, mean) => {
+                if (arr.length < 2) return 0;
+                const variance = arr.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / (arr.length - 1);
+                return Math.sqrt(variance);
+            };
+
+            const analyze = () => {
+                const rawPoints = parseTextToPoints(inputArea.value);
+                currentPoints = rawPoints;
+
+                ui.countBadge.textContent = `${rawPoints.length} Points`;
+                ui.status.textContent = rawPoints.length > 0 
+                    ? `Detected ${rawPoints.length} coordinates.` 
+                    : "No valid coordinates found.";
+
+                if (rawPoints.length > 0) {
+                    updateMap(rawPoints);
+                } else {
+                    if (pointLayerGroup) pointLayerGroup.clearLayers();
+                    if (heatLayer && map) map.removeLayer(heatLayer);
+                }
+
+                if (rawPoints.length < 3) {
+                    resetResults();
+                    if(rawPoints.length > 0) ui.interp.textContent = "Need at least 3 points for spatial statistics.";
+                    return;
+                }
+
+                const projPts = projectPoints(rawPoints);
+                
+                const distances = getNearestDistances(projPts);
+                const n = distances.length;
+                const sumDist = distances.reduce((a, b) => a + b, 0);
+                const mnnd = n > 0 ? sumDist / n : 0;
+                const stdDev = calculateStdDev(distances, mnnd);
+                const stdError = n > 0 ? stdDev / Math.sqrt(n) : 0;
+                
+                let area = getConvexHullArea(projPts);
+                if (area < 1) { 
+                    const xs = projPts.map(p => p.x);
+                    const ys = projPts.map(p => p.y);
+                    area = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+                    if (area === 0) area = 1; 
+                }
+
+                const density = rawPoints.length / area;
+                const expDist = 0.5 / Math.sqrt(density);
+                const rVal = mnnd / expDist;
+                const sigma = 0.26136 / Math.sqrt(rawPoints.length * density);
+                const zVal = (mnnd - expDist) / sigma;
+
+                ui.mnnd.textContent = `${mnnd.toFixed(2)} m`;
+                ui.se.textContent = `±${stdError.toFixed(2)} m`;
+                ui.exp.textContent = `${expDist.toFixed(2)} m`;
+                ui.density.textContent = density.toFixed(4);
+                ui.zScore.textContent = zVal.toFixed(2);
+                ui.rValue.textContent = rVal.toFixed(2);
+
+                ui.pattern.className = 'pattern-badge'; 
+                
+                const absZ = Math.abs(zVal);
+                
+                if (absZ < 1.96) {
+                    ui.pattern.textContent = "Random";
+                    ui.pattern.classList.add('pattern-random');
+                    ui.interp.textContent = `Pattern is statistically indistinguishable from Random (|Z| < 1.96).`;
+                } else if (zVal <= -1.96) {
+                    ui.pattern.textContent = "Clustered";
+                    ui.pattern.classList.add('pattern-clustered');
+                    ui.interp.textContent = `Trees are significantly clustered together (Z = ${zVal.toFixed(2)}).`;
+                } else {
+                    ui.pattern.textContent = "Dispersed";
+                    ui.pattern.classList.add('pattern-dispersed');
+                    ui.interp.textContent = `Trees are significantly dispersed/uniform (Z = ${zVal.toFixed(2)}).`;
+                }
+
+                localStorage.setItem('spatialData', inputArea.value);
+            };
+
+            const resetResults = () => {
+                ui.rValue.textContent = "--";
+                ui.pattern.textContent = "--";
+                ui.pattern.className = 'pattern-badge';
+                ui.mnnd.textContent = "--";
+                ui.se.textContent = "--";
+                ui.exp.textContent = "--";
+                ui.zScore.textContent = "--";
+                ui.density.textContent = "--";
+                ui.interp.textContent = "Enter coordinates below to see analysis.";
+            };
+
+            const showToast = (msg) => {
+                const t = document.getElementById('toast');
+                t.textContent = msg;
+                t.classList.add('show');
+                setTimeout(() => t.classList.remove('show'), 3000);
+            };
+
+            let debounceTimer;
+            inputArea.addEventListener('input', () => {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(analyze, 500);
+            });
+
+            calcBtn.addEventListener('click', () => {
+                analyze();
+                showToast("Recalculated!");
+            });
+
+            clearBtn.addEventListener('click', () => {
+                inputArea.value = '';
+                localStorage.removeItem('spatialData');
+                analyze();
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    inputArea.value = e.target.result;
+                    analyze();
+                    showToast("File Imported Successfully");
+                };
+                reader.readAsText(file);
+                e.target.value = ''; 
+            });
+
+            const fileLabel = fileInput.parentElement;
+            fileLabel.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    fileInput.click();
+                }
+            });
+
+            [mapControls.radius, mapControls.blur, mapControls.max].forEach(input => {
+                input.addEventListener('input', refreshHeatmapSettings);
+            });
+
+            mapControls.togglePoints.addEventListener('change', () => {
+                if(currentPoints.length > 0) updateMap(currentPoints);
+            });
+
+            mapControls.lockMap.addEventListener('change', () => {
+                isMapLocked = mapControls.lockMap.checked;
+                setMapInteraction(!isMapLocked);
+            });
+
+            mapControls.centerBtn.addEventListener('click', () => {
+                centerOnPoints();
+            });
+
+            initMap();
+            const savedData = localStorage.getItem('spatialData');
+            if (savedData) {
+                inputArea.value = savedData;
+                analyze();
+            }
+        });
+    </script>
+</body>
+</html>
